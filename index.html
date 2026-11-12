@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Flappy Nose — Gesture Flight</title>
+
+  <!-- Google Fonts: Plus Jakarta Sans for clean, friendly modern geometry -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            cream: {
+              50: '#FAF8F5',
+              100: '#F4EFE6',
+              200: '#E8DFD1',
+              300: '#D8CBB8',
+            },
+            sage: {
+              100: '#E7EFE9',
+              200: '#CFE0D4',
+              400: '#8FB09A',
+              500: '#6E947B',
+              600: '#537660',
+              700: '#3D5948',
+            },
+            slateink: {
+              400: '#7B8794',
+              600: '#4A5568',
+              800: '#2D3748',
+              900: '#1F2933',
+            },
+            terracotta: {
+              100: '#FBECE8',
+              400: '#E08A73',
+              500: '#CE6D54',
+              600: '#B5573F',
+            },
+            ochre: {
+              100: '#FBF3E0',
+              400: '#E2B459',
+              500: '#CE9B3C',
+            }
+          },
+          boxShadow: {
+            'soft': '0 10px 30px -5px rgba(45, 55, 72, 0.08), 0 4px 10px -2px rgba(45, 55, 72, 0.04)',
+            'card': '0 20px 45px -10px rgba(45, 55, 72, 0.12), 0 6px 16px -4px rgba(45, 55, 72, 0.05)',
+            'pill': '0 4px 14px rgba(45, 55, 72, 0.07)',
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #F4EFE6;
+      color: #2D3748;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    }
+
+    canvas#gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    /* Subtle matte modal transitions */
+    .overlay-panel {
+      transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .overlay-hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px) scale(0.98);
+    }
+    .overlay-visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+
+    /* Tactile matte button press */
+    .btn-matte {
+      transition: transform 0.14s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+    }
+    .btn-matte:hover {
+      transform: translateY(-1px);
+    }
+    .btn-matte:active {
+      transform: translateY(1px) scale(0.985);
+    }
+
+    /* Mirror webcam feed naturally */
+    .mirror-x {
+      transform: scaleX(-1);
+    }
+  </style>
+</head>
+<body class="relative w-full h-full bg-cream-100 text-slateink-800 antialiased">
+
+  <!-- Full-viewport HTML5 Game Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Top Live HUD Bar -->
+  <header class="fixed top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 pointer-events-none">
+    <!-- Left: Difficulty Badge & Control Mode Pill -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <div id="hudDifficultyBadge" class="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-cream-50/90 backdrop-blur-md border border-cream-200 shadow-pill text-xs sm:text-sm font-semibold text-slateink-800">
+        <span id="hudDiffDot" class="w-2.5 h-2.5 rounded-full bg-sage-500"></span>
+        <span id="hudDiffLabel">Medium</span>
+      </div>
+
+      <button id="btnRecalibrateHud" title="Set current head height as screen center" class="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-cream-50/90 hover:bg-cream-50 backdrop-blur-md border border-cream-200 shadow-pill text-xs sm:text-sm font-medium text-slateink-600 btn-matte">
+        <svg class="w-4 h-4 text-sage-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364 6.364l-2.121-2.121M8.757 8.757L6.636 6.636m11.728 0l-2.121 2.121M8.757 15.243l-2.121 2.121" />
+        </svg>
+        <span>Recalibrate</span>
+      </button>
+    </div>
+
+    <!-- Center: Live Score Pill -->
+    <div class="flex items-center gap-4 px-5 py-2 rounded-2xl bg-cream-50/95 backdrop-blur-md border border-cream-200 shadow-pill pointer-events-auto">
+      <div class="text-center">
+        <div class="text-[10px] uppercase tracking-wider font-bold text-slateink-400">Score</div>
+        <div id="hudScore" class="text-xl sm:text-2xl font-extrabold text-slateink-900 leading-tight tabular-nums">0</div>
+      </div>
+      <div class="h-7 w-px bg-cream-200"></div>
+      <div class="text-center">
+        <div class="text-[10px] uppercase tracking-wider font-bold text-slateink-400">Best</div>
+        <div id="hudBest" class="text-xl sm:text-2xl font-bold text-sage-600 leading-tight tabular-nums">0</div>
+      </div>
+    </div>
+
+    <!-- Right: Audio Mute & Camera Toggle -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <button id="btnTogglePip" title="Toggle Camera Preview" class="p-2.5 rounded-2xl bg-cream-50/90 hover:bg-cream-50 backdrop-blur-md border border-cream-200 shadow-pill text-slateink-600 btn-matte" aria-label="Toggle Camera Preview">
+        <svg id="iconCamOn" class="w-5 h-5 text-sage-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        <svg id="iconCamOff" class="w-5 h-5 text-slateink-400 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2zM3 3l18 18" />
+        </svg>
+      </button>
+
+      <button id="btnToggleSound" title="Mute / Unmute Sound" class="p-2.5 rounded-2xl bg-cream-50/90 hover:bg-cream-50 backdrop-blur-md border border-cream-200 shadow-pill text-slateink-600 btn-matte" aria-label="Toggle Sound">
+        <svg id="iconSoundOn" class="w-5 h-5 text-slateink-700" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
+        </svg>
+        <svg id="iconSoundOff" class="w-5 h-5 text-slateink-400 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Picture-in-Picture (PiP) Webcam Preview Box -->
+  <aside id="pipContainer" class="fixed bottom-4 right-4 z-20 w-40 sm:w-48 rounded-2xl bg-cream-50/95 backdrop-blur-md border border-cream-200 shadow-card overflow-hidden transition-all duration-300">
+    <div class="relative w-full aspect-[4/3] bg-cream-200 overflow-hidden">
+      <!-- Raw video element (hidden, drawn to pipCanvas with nose marker) -->
+      <video id="webcamVideo" class="hidden" playsinline autoplay muted></video>
+      <!-- Mirrored canvas showing camera + clean nose indicator -->
+      <canvas id="pipCanvas" class="w-full h-full object-cover"></canvas>
+
+      <!-- Fallback / Loading State inside PiP -->
+      <div id="pipPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center p-3 text-center bg-cream-200/90">
+        <div id="pipSpinner" class="w-5 h-5 border-2 border-sage-500 border-t-transparent rounded-full animate-spin mb-1.5"></div>
+        <span id="pipPlaceholderText" class="text-[11px] font-medium text-slateink-600 leading-snug">Initializing camera...</span>
+      </div>
+
+      <!-- Subtle Top Badge -->
+      <div class="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-cream-50/85 backdrop-blur-sm border border-cream-200/80">
+        <span id="pipStatusDot" class="w-2 h-2 rounded-full bg-ochre-400"></span>
+        <span id="pipStatusText" class="text-[10px] font-semibold text-slateink-700">Nose Tracker</span>
+      </div>
+    </div>
+
+    <!-- Quick Calibration Footer in PiP -->
+    <div class="flex items-center justify-between px-2.5 py-1.5 bg-cream-50 border-t border-cream-200/80">
+      <span id="controlModeLabel" class="text-[11px] font-medium text-slateink-500 truncate">Detecting...</span>
+      <button id="btnRecalibratePip" class="text-[11px] font-semibold text-sage-600 hover:text-sage-700 px-1.5 py-0.5 rounded-md hover:bg-sage-100 transition-colors">
+        Center
+      </button>
+    </div>
+  </aside>
+
+  <!-- Start / Home Overlay Modal -->
+  <main id="startOverlay" class="overlay-panel overlay-visible fixed inset-0 z-30 flex items-center justify-center p-4 bg-slateink-900/15 backdrop-blur-[2px]">
+    <div class="w-full max-w-md rounded-3xl bg-cream-50 border border-cream-200 shadow-card p-6 sm:p-8 text-center">
+      <!-- Emblem -->
+      <div class="mx-auto mb-4 w-14 h-14 rounded-2xl bg-sage-100 border border-sage-200 flex items-center justify-center">
+        <svg class="w-8 h-8 text-sage-600" viewBox="0 0 36 36" fill="none">
+          <circle cx="18" cy="18" r="12" fill="#E08A73" />
+          <path d="M12 19C12 15.5 15 13 18.5 13C22 13 24.5 15.5 24.5 19C24.5 22.5 22 24.5 18.5 24.5C15 24.5 12 22.5 12 19Z" fill="#FAF8F5" opacity="0.35" />
+          <circle cx="22" cy="15.5" r="2" fill="#1F2933" />
+          <path d="M27.5 17.5L32.5 19L27.5 20.5V17.5Z" fill="#E2B459" />
+          <path d="M13 18.5C15.5 17 18.5 18 19.5 20.5C17 22 14 21.5 13 18.5Z" fill="#CE6D54" />
+        </svg>
+      </div>
+
+      <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slateink-900">Flappy Nose</h1>
+      <p class="mt-1.5 text-sm text-slateink-600 leading-relaxed">
+        Steer smoothly by tilting or lifting your head. Your nose guides your altitude in real time.
+      </p>
+
+      <!-- Webcam & Tracking Status Card -->
+      <div id="startCamBanner" class="mt-5 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-cream-100 border border-cream-200 text-left">
+        <div class="flex items-center gap-3 min-w-0">
+          <span id="startCamDot" class="w-2.5 h-2.5 rounded-full bg-ochre-400 shrink-0"></span>
+          <div class="min-w-0">
+            <div id="startCamTitle" class="text-xs font-bold text-slateink-800 truncate">Connecting Webcam...</div>
+            <div id="startCamSub" class="text-[11px] text-slateink-500 truncate">Mouse & touch tracking ready anytime</div>
+          </div>
+        </div>
+        <button id="btnRetryCam" class="hidden shrink-0 px-2.5 py-1.5 rounded-xl bg-cream-50 border border-cream-200 text-xs font-semibold text-slateink-700 hover:bg-cream-200/50 btn-matte">
+          Enable Cam
+        </button>
+      </div>
+
+      <!-- Difficulty Selector -->
+      <div class="mt-5 text-left">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-slateink-400">Select Difficulty</span>
+          <span id="diffDescText" class="text-xs font-medium text-sage-600">Balanced pace &amp; gaps</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 p-1.5 rounded-2xl bg-cream-100 border border-cream-200" role="group" aria-label="Difficulty">
+          <button type="button" data-diff="easy" class="diff-btn py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-slateink-600 hover:text-slateink-900">
+            Easy
+          </button>
+          <button type="button" data-diff="medium" class="diff-btn py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all bg-cream-50 text-slateink-900 shadow-pill">
+            Medium
+          </button>
+          <button type="button" data-diff="hard" class="diff-btn py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-slateink-600 hover:text-slateink-900">
+            Hard
+          </button>
+        </div>
+      </div>
+
+      <!-- Fallback Mode Option Toggle -->
+      <div class="mt-4 flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-cream-100/70 border border-cream-200/80 text-xs">
+        <span class="font-medium text-slateink-600">Pointer Fallback Mode</span>
+        <button id="btnToggleFallbackStyle" type="button" class="font-semibold text-sage-600 hover:text-sage-700 px-2 py-1 rounded-lg bg-cream-50 border border-cream-200">
+          Direct Follow
+        </button>
+      </div>
+
+      <!-- Primary Start CTA -->
+      <button id="btnStartGame" type="button" class="mt-6 w-full py-3.5 px-6 rounded-2xl bg-sage-600 hover:bg-sage-700 text-cream-50 font-bold text-base shadow-soft btn-matte flex items-center justify-center gap-2">
+        <span>Start Flight</span>
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+      </button>
+    </div>
+  </main>
+
+  <!-- Game Over Modal -->
+  <section id="gameOverOverlay" class="overlay-panel overlay-hidden fixed inset-0 z-30 flex items-center justify-center p-4 bg-slateink-900/20 backdrop-blur-[2px]">
+    <div class="w-full max-w-md rounded-3xl bg-cream-50 border border-cream-200 shadow-card p-6 sm:p-8 text-center">
+      <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-terracotta-100 text-terracotta-600 text-xs font-bold mb-3">
+        <span>Flight Ended</span>
+      </div>
+
+      <h2 class="text-2xl sm:text-3xl font-extrabold text-slateink-900">Nice Run!</h2>
+      <p id="gameOverSubtext" class="mt-1 text-sm text-slateink-500">Keep your head steady through the narrow gates.</p>
+
+      <!-- Score Summary Cards -->
+      <div class="mt-5 grid grid-cols-2 gap-3">
+        <div class="p-4 rounded-2xl bg-cream-100 border border-cream-200">
+          <div class="text-xs font-bold uppercase tracking-wider text-slateink-400">Score</div>
+          <div id="finalScoreVal" class="mt-1 text-3xl font-extrabold text-slateink-900 tabular-nums">0</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-sage-100/80 border border-sage-200">
+          <div class="flex items-center justify-center gap-1 text-xs font-bold uppercase tracking-wider text-sage-700">
+            <span>Best</span>
+            <span id="newBestBadge" class="hidden px-1.5 py-0.5 rounded bg-ochre-400 text-cream-50 text-[9px]">NEW</span>
+          </div>
+          <div id="finalBestVal" class="mt-1 text-3xl font-extrabold text-sage-700 tabular-nums">0</div>
+        </div>
+      </div>
+
+      <!-- Difficulty Switcher on Game Over -->
+      <div class="mt-5 text-left">
+        <span class="block text-xs font-bold uppercase tracking-wider text-slateink-400 mb-2">Difficulty</span>
+        <div class="grid grid-cols-3 gap-2 p-1.5 rounded-2xl bg-cream-100 border border-cream-200">
+          <button type="button" data-diff="easy" class="diff-btn py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-slateink-600">
+            Easy
+          </button>
+          <button type="button" data-diff="medium" class="diff-btn py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all bg-cream-50 text-slateink-900 shadow-pill">
+            Medium
+          </button>
+          <button type="button" data-diff="hard" class="diff-btn py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-slateink-600">
+            Hard
+          </button>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="mt-6 flex flex-col sm:flex-row gap-2.5">
+        <button id="btnBackHome" type="button" class="sm:w-1/3 py-3.5 px-4 rounded-2xl bg-cream-100 hover:bg-cream-200/70 border border-cream-200 text-slateink-700 font-bold text-sm btn-matte">
+          Home
+        </button>
+        <button id="btnPlayAgain" type="button" class="sm:w-2/3 py-3.5 px-6 rounded-2xl bg-sage-600 hover:bg-sage-700 text-cream-50 font-bold text-base shadow-soft btn-matte flex items-center justify-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span>Play Again</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MediaPipe Tasks Vision (FaceLandmarker) via ES Module -->
+  <script type="module">
+    import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+
+    /**
+     * ============================================================================
+     * 1. SOUND SYNTHESIZER (Web Audio API — Soft Wooden / Marimba Tones)
+     * ============================================================================
+     */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
+      }
+
+      toggleMute() {
+        this.muted = !this.muted;
+        return this.muted;
+      }
+
+      // Gentle marimba chime when clearing a pipe
+      playScore() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const notes = [523.25, 659.25]; // C5 -> E5 soft interval
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.065);
+
+          gain.gain.setValueAtTime(0.001, now + idx * 0.065);
+          gain.gain.exponentialRampToValueAtTime(0.14, now + idx * 0.065 + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + idx * 0.065 + 0.28);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.065);
+          osc.stop(now + idx * 0.065 + 0.3);
+        });
+      }
+
+      // Soft airy whoosh for flap / start / recalibrate
+      playWhoosh() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(360, now + 0.11);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.07, now + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.14);
+      }
+
+      // Muted wooden thud on collision
+      playThud() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(145, now);
+        osc.frequency.exponentialRampToValueAtTime(48, now + 0.22);
+
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 2. DIFFICULTY CONFIGURATIONS & MATTE PALETTE
+     * ============================================================================
+     */
+    const DIFFICULTIES = {
+      easy: {
+        id: 'easy',
+        label: 'Easy',
+        description: 'Wider gates, relaxed cruise speed',
+        dotColor: '#6E947B',     // Sage green
+        pipeGapRatio: 0.31,      // Percentage of screen height
+        minPipeGap: 185,
+        speed: 230,              // Pixels per second
+        spawnInterval: 2.05,     // Seconds between pipes
+        lerpSmoothness: 8.5,     // Gentler vertical smoothing
+        flapGravity: 980,
+        flapImpulse: -380,
+      },
+      medium: {
+        id: 'medium',
+        label: 'Medium',
+        description: 'Balanced pace & gate spacing',
+        dotColor: '#CE9B3C',     // Warm ochre
+        pipeGapRatio: 0.245,
+        minPipeGap: 148,
+        speed: 310,
+        spawnInterval: 1.62,
+        lerpSmoothness: 12.0,
+        flapGravity: 1250,
+        flapImpulse: -440,
+      },
+      hard: {
+        id: 'hard',
+        label: 'Hard',
+        description: 'Narrower gates, brisk wind speed',
+        dotColor: '#CE6D54',     // Matte terracotta
+        pipeGapRatio: 0.195,
+        minPipeGap: 118,
+        speed: 405,
+        spawnInterval: 1.28,
+        lerpSmoothness: 16.0,
+        flapGravity: 1500,
+        flapImpulse: -490,
+      }
+    };
+
+    const PALETTE = {
+      skyTop: '#F4EFE6',         // Warm cream
+      skyBottom: '#E7EFE9',      // Soft sage tint
+      sunDisc: '#FBF3E0',        // Muted pastel ochre sun
+      cloudFill: '#FAF8F5',      // Off-white cloud
+      farHill: '#DCE6DF',        // Muted sage-grey distant ridge
+      citySilhouette: '#CFDAD3', // Soft slate-sage architecture
+      nearHill: '#C2D4C8',       // Soft sage rolling hill
+      groundTop: '#8FB09A',      // Matte sage turf
+      groundBody: '#DFD3C0',     // Warm sand earth
+      groundStripe: '#D3C4AE',
+      pipeBody: '#6E947B',       // Matte sage pipe
+      pipeHighlight: '#83A78F',
+      pipeShadow: '#587A64',
+      pipeCap: '#5D826A',
+      birdBody: '#E08A73',       // Warm terracotta coral
+      birdBelly: '#FAF8F5',
+      birdWing: '#C8664E',
+      birdBeak: '#E2B459',       // Soft ochre beak
+      birdEye: '#1F2933',
+    };
+
+    /**
+     * ============================================================================
+     * 3. DOM REFERENCES & GAME STATE
+     * ============================================================================
+     */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const pipCanvas = document.getElementById('pipCanvas');
+    const pipCtx = pipCanvas.getContext('2d');
+    const videoEl = document.getElementById('webcamVideo');
+
+    const sound = new SoundEngine();
+
+    const state = {
+      phase: 'START', // 'START' | 'PLAYING' | 'GAMEOVER'
+      difficulty: 'medium',
+      score: 0,
+      highScores: {
+        easy: parseInt(localStorage.getItem('flappy_nose_best_easy') || '0', 10),
+        medium: parseInt(localStorage.getItem('flappy_nose_best_medium') || '0', 10),
+        hard: parseInt(localStorage.getItem('flappy_nose_best_hard') || '0', 10),
+      },
+      // Screen dimensions (logical CSS pixels)
+      width: window.innerWidth,
+      height: window.innerHeight,
+      groundHeight: 76,
+
+      // Bird entity
+      bird: {
+        x: 160,
+        y: window.innerHeight * 0.45,
+        vy: 0,
+        radius: 19,
+        rotation: 0,
+        wingPhase: 0,
+      },
+
+      // Obstacles & Scenery
+      pipes: [],
+      spawnTimer: 0,
+      lastGapCenterY: null,
+      scrollDistance: 0,
+      clouds: [],
+      cityBlocks: [],
+
+      // Input & Nose Tracking
+      webcamActive: false,
+      faceLandmarker: null,
+      noseDetected: false,
+      rawNoseY: 0.5,         // Normalized [0..1] from camera
+      centerNoseY: 0.5,      // Calibrated center baseline
+      sensitivity: 2.6,      // Comfortable ergonomic range (no neck straining)
+      targetNormalizedY: 0.45, // [0..1] target vertical position on screen
+      pointerNormalizedY: 0.45,
+      fallbackMode: 'FOLLOW', // 'FOLLOW' (smooth mouse/touch Y) or 'FLAP' (classic tap/space)
+      pipVisible: true,
+    };
+
+    /**
+     * ============================================================================
+     * 4. UI & HUD SYNCHRONIZATION
+     * ============================================================================
+     */
+    const ui = {
+      startOverlay: document.getElementById('startOverlay'),
+      gameOverOverlay: document.getElementById('gameOverOverlay'),
+      hudScore: document.getElementById('hudScore'),
+      hudBest: document.getElementById('hudBest'),
+      hudDiffDot: document.getElementById('hudDiffDot'),
+      hudDiffLabel: document.getElementById('hudDiffLabel'),
+      diffDescText: document.getElementById('diffDescText'),
+      diffButtons: document.querySelectorAll('.diff-btn'),
+      startCamDot: document.getElementById('startCamDot'),
+      startCamTitle: document.getElementById('startCamTitle'),
+      startCamSub: document.getElementById('startCamSub'),
+      btnRetryCam: document.getElementById('btnRetryCam'),
+      pipContainer: document.getElementById('pipContainer'),
+      pipPlaceholder: document.getElementById('pipPlaceholder'),
+      pipSpinner: document.getElementById('pipSpinner'),
+      pipPlaceholderText: document.getElementById('pipPlaceholderText'),
+      pipStatusDot: document.getElementById('pipStatusDot'),
+      pipStatusText: document.getElementById('pipStatusText'),
+      controlModeLabel: document.getElementById('controlModeLabel'),
+      finalScoreVal: document.getElementById('finalScoreVal'),
+      finalBestVal: document.getElementById('finalBestVal'),
+      newBestBadge: document.getElementById('newBestBadge'),
+      gameOverSubtext: document.getElementById('gameOverSubtext'),
+      btnToggleFallbackStyle: document.getElementById('btnToggleFallbackStyle'),
+    };
+
+    function updateDifficultyUI(diffKey) {
+      state.difficulty = diffKey;
+      const cfg = DIFFICULTIES[diffKey];
+
+      ui.hudDiffDot.style.backgroundColor = cfg.dotColor;
+      ui.hudDiffLabel.textContent = cfg.label;
+      ui.diffDescText.textContent = cfg.description;
+      ui.hudBest.textContent = state.highScores[diffKey];
+
+      ui.diffButtons.forEach((btn) => {
+        const isSelected = btn.dataset.diff === diffKey;
+        if (isSelected) {
+          btn.classList.add('bg-cream-50', 'text-slateink-900', 'shadow-pill');
+          btn.classList.remove('text-slateink-600');
+        } else {
+          btn.classList.remove('bg-cream-50', 'text-slateink-900', 'shadow-pill');
+          btn.classList.add('text-slateink-600');
+        }
+      });
+    }
+
+    function updateControlStatusUI() {
+      if (state.webcamActive && state.noseDetected) {
+        ui.startCamDot.className = 'w-2.5 h-2.5 rounded-full bg-sage-500 shrink-0';
+        ui.startCamTitle.textContent = 'Nose Tracking Active';
+        ui.startCamSub.textContent = 'Move your head up or down to steer';
+        ui.btnRetryCam.classList.add('hidden');
+
+        ui.pipStatusDot.className = 'w-2 h-2 rounded-full bg-sage-500';
+        ui.pipStatusText.textContent = 'Nose Locked';
+        ui.controlModeLabel.textContent = 'Head Gesture';
+      } else if (state.webcamActive && !state.noseDetected) {
+        ui.startCamDot.className = 'w-2.5 h-2.5 rounded-full bg-ochre-400 shrink-0';
+        ui.startCamTitle.textContent = 'Camera Ready — Face Not in Frame';
+        ui.startCamSub.textContent = 'Center your face or use mouse/touch';
+        ui.btnRetryCam.classList.add('hidden');
+
+        ui.pipStatusDot.className = 'w-2 h-2 rounded-full bg-ochre-400';
+        ui.pipStatusText.textContent = 'Searching Face';
+        ui.controlModeLabel.textContent = 'Searching...';
+      } else {
+        ui.startCamDot.className = 'w-2.5 h-2.5 rounded-full bg-slateink-400 shrink-0';
+        ui.startCamTitle.textContent = 'Pointer / Touch Control Active';
+        ui.startCamSub.textContent = 'Webcam unavailable — move mouse or tap to fly';
+        ui.btnRetryCam.classList.remove('hidden');
+
+        ui.pipStatusDot.className = 'w-2 h-2 rounded-full bg-slateink-400';
+        ui.pipStatusText.textContent = 'Fallback Mode';
+        ui.controlModeLabel.textContent = state.fallbackMode === 'FOLLOW' ? 'Mouse / Touch Y' : 'Tap / Space Flap';
+      }
+    }
+
+    function calibrateCenter() {
+      if (state.webcamActive && state.noseDetected) {
+        state.centerNoseY = state.rawNoseY;
+        sound.playWhoosh();
+        ui.controlModeLabel.textContent = 'Centered!';
+        setTimeout(updateControlStatusUI, 900);
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 5. MEDIAPIPE FACE LANDMARKER & WEBCAM TRACKING
+     * ============================================================================
+     */
+    async function initFaceTracker() {
+      try {
+        ui.pipPlaceholderText.textContent = 'Loading face model...';
+        const vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+        );
+        state.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'GPU',
+          },
+          outputFaceBlendshapes: false,
+          outputFacialTransformationMatrixes: false,
+          runningMode: 'VIDEO',
+          numFaces: 1,
+        });
+        await startWebcam();
+      } catch (err) {
+        console.warn('MediaPipe initialization fallback:', err);
+        handleWebcamUnavailable('Camera tracking unavailable');
+      }
+    }
+
+    async function startWebcam() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        handleWebcamUnavailable('Camera API unsupported');
+        return;
+      }
+
+      try {
+        ui.pipPlaceholderText.textContent = 'Requesting camera...';
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 320 },
+            height: { ideal: 240 },
+            facingMode: 'user',
+          },
+          audio: false,
+        });
+
+        videoEl.srcObject = stream;
+        await new Promise((resolve) => {
+          videoEl.onloadedmetadata = () => resolve();
+        });
+        await videoEl.play();
+
+        pipCanvas.width = videoEl.videoWidth || 320;
+        pipCanvas.height = videoEl.videoHeight || 240;
+
+        state.webcamActive = true;
+        ui.pipPlaceholder.classList.add('hidden');
+        updateControlStatusUI();
+      } catch (err) {
+        console.warn('Webcam permission denied or unavailable:', err);
+        handleWebcamUnavailable('Using Mouse / Touch');
+      }
+    }
+
+    function handleWebcamUnavailable(reason) {
+      state.webcamActive = false;
+      state.noseDetected = false;
+      ui.pipSpinner.classList.add('hidden');
+      ui.pipPlaceholder.classList.remove('hidden');
+      ui.pipPlaceholderText.textContent = reason;
+      updateControlStatusUI();
+    }
+
+    let lastVideoTime = -1;
+    function processWebcamFrame() {
+      if (!state.webcamActive || !state.faceLandmarker || videoEl.readyState < 2) {
+        return;
+      }
+
+      const nowMs = performance.now();
+      if (videoEl.currentTime !== lastVideoTime) {
+        lastVideoTime = videoEl.currentTime;
+        const results = state.faceLandmarker.detectForVideo(videoEl, nowMs);
+
+        // Draw mirrored camera frame onto PiP canvas
+        const pw = pipCanvas.width;
+        const ph = pipCanvas.height;
+        pipCtx.save();
+        pipCtx.translate(pw, 0);
+        pipCtx.scale(-1, 1);
+        pipCtx.drawImage(videoEl, 0, 0, pw, ph);
+        pipCtx.restore();
+
+        // Subtle warm matte tint over camera feed to match aesthetic
+        pipCtx.fillStyle = 'rgba(244, 239, 230, 0.08)';
+        pipCtx.fillRect(0, 0, pw, ph);
+
+        if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+          const landmarks = results.faceLandmarks[0];
+          // Landmark #1 (or #4) is the tip of the nose in MediaPipe FaceMesh
+          const noseTip = landmarks[1] || landmarks[4];
+
+          if (noseTip) {
+            const wasDetected = state.noseDetected;
+            state.noseDetected = true;
+            state.rawNoseY = noseTip.y;
+
+            // Auto-calibrate baseline the first moment a face is detected
+            if (!wasDetected) {
+              state.centerNoseY = noseTip.y;
+              updateControlStatusUI();
+            }
+
+            // Map relative nose offset from calibrated center to [0.06 .. 0.94] screen height
+            const deltaY = (state.rawNoseY - state.centerNoseY) * state.sensitivity;
+            const mappedY = Math.max(0.05, Math.min(0.95, 0.5 + deltaY));
+            state.targetNormalizedY = mappedY;
+
+            // Draw clean matte nose indicator dot on PiP preview (mirrored X)
+            const dotX = (1 - noseTip.x) * pw;
+            const dotY = noseTip.y * ph;
+
+            // Calibrated horizontal center guide line
+            const centerLineY = state.centerNoseY * ph;
+            pipCtx.strokeStyle = 'rgba(250, 248, 245, 0.45)';
+            pipCtx.lineWidth = 1;
+            pipCtx.setLineDash([4, 4]);
+            pipCtx.beginPath();
+            pipCtx.moveTo(12, centerLineY);
+            pipCtx.lineTo(pw - 12, centerLineY);
+            pipCtx.stroke();
+            pipCtx.setLineDash([]);
+
+            // Outer soft ring
+            pipCtx.beginPath();
+            pipCtx.arc(dotX, dotY, 10, 0, Math.PI * 2);
+            pipCtx.fillStyle = 'rgba(224, 138, 115, 0.35)';
+            pipCtx.fill();
+
+            // Crisp matte terracotta center dot
+            pipCtx.beginPath();
+            pipCtx.arc(dotX, dotY, 5, 0, Math.PI * 2);
+            pipCtx.fillStyle = '#E08A73';
+            pipCtx.fill();
+            pipCtx.lineWidth = 1.5;
+            pipCtx.strokeStyle = '#FAF8F5';
+            pipCtx.stroke();
+          }
+        } else if (state.noseDetected) {
+          state.noseDetected = false;
+          updateControlStatusUI();
+        }
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 6. SCENERY & RESPONSIVE CANVAS SETUP
+     * ============================================================================
+     */
+    function initParallaxEnvironment() {
+      state.clouds = [];
+      for (let i = 0; i < 6; i++) {
+        state.clouds.push({
+          x: (state.width / 5) * i + Math.random() * 80,
+          y: 65 + Math.random() * (state.height * 0.32),
+          scale: 0.65 + Math.random() * 0.55,
+          speedFactor: 0.12 + Math.random() * 0.08,
+        });
+      }
+
+      state.cityBlocks = [];
+      let cursorX = 0;
+      while (cursorX < state.width + 400) {
+        const w = 36 + Math.random() * 44;
+        const h = 45 + Math.random() * 85;
+        state.cityBlocks.push({
+          x: cursorX,
+          w,
+          h,
+          hasRoofAccent: Math.random() > 0.55,
+        });
+        cursorX += w + 10 + Math.random() * 18;
+      }
+    }
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      state.width = window.innerWidth;
+      state.height = window.innerHeight;
+      state.groundHeight = Math.max(64, Math.min(88, state.height * 0.11));
+
+      canvas.width = Math.floor(state.width * dpr);
+      canvas.height = Math.floor(state.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Position bird comfortably on left third (responsive for mobile & desktop)
+      state.bird.x = Math.max(85, Math.min(220, state.width * 0.24));
+      if (state.phase === 'START') {
+        state.bird.y = (state.height - state.groundHeight) * 0.48;
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 7. CORE GAMEPLAY LOOP & COLLISION PHYSICS
+     * ============================================================================
+     */
+    function startGame() {
+      sound.init();
+      sound.playWhoosh();
+
+      // Recalibrate nose center automatically when starting if face is detected
+      if (state.webcamActive && state.noseDetected) {
+        state.centerNoseY = state.rawNoseY;
+      }
+
+      state.phase = 'PLAYING';
+      state.score = 0;
+      ui.hudScore.textContent = '0';
+      ui.hudBest.textContent = state.highScores[state.difficulty];
+
+      state.pipes = [];
+      state.spawnTimer = 0.2; // First pipe arrives cleanly after brief lead-in
+      state.lastGapCenterY = (state.height - state.groundHeight) * 0.5;
+
+      state.bird.y = (state.height - state.groundHeight) * 0.46;
+      state.bird.vy = 0;
+      state.bird.rotation = 0;
+
+      ui.startOverlay.classList.remove('overlay-visible');
+      ui.startOverlay.classList.add('overlay-hidden');
+      ui.gameOverOverlay.classList.remove('overlay-visible');
+      ui.gameOverOverlay.classList.add('overlay-hidden');
+    }
+
+    function triggerGameOver() {
+      if (state.phase === 'GAMEOVER') return;
+      state.phase = 'GAMEOVER';
+      sound.playThud();
+
+      const diff = state.difficulty;
+      const isNewBest = state.score > state.highScores[diff];
+      if (isNewBest) {
+        state.highScores[diff] = state.score;
+        localStorage.setItem(`flappy_nose_best_${diff}`, String(state.score));
+        ui.hudBest.textContent = state.score;
+      }
+
+      ui.finalScoreVal.textContent = state.score;
+      ui.finalBestVal.textContent = state.highScores[diff];
+      ui.newBestBadge.classList.toggle('hidden', !isNewBest);
+
+      if (state.score === 0) {
+        ui.gameOverSubtext.textContent = 'Tip: Gentle, small head movements give the smoothest flight.';
+      } else if (isNewBest) {
+        ui.gameOverSubtext.textContent = `A new personal record on ${DIFFICULTIES[diff].label} mode!`;
+      } else {
+        ui.gameOverSubtext.textContent = 'Smooth flying! Ready for another run?';
+      }
+
+      ui.gameOverOverlay.classList.remove('overlay-hidden');
+      ui.gameOverOverlay.classList.add('overlay-visible');
+    }
+
+    function spawnPipe() {
+      const cfg = DIFFICULTIES[state.difficulty];
+      const playableHeight = state.height - state.groundHeight;
+      const gapHeight = Math.max(cfg.minPipeGap, playableHeight * cfg.pipeGapRatio);
+
+      const margin = Math.max(68, playableHeight * 0.12);
+      const minCenter = margin + gapHeight * 0.5;
+      const maxCenter = playableHeight - margin - gapHeight * 0.5;
+
+      // Constrain vertical jump between consecutive pipes so it's always fair & ergonomic
+      const maxStep = state.difficulty === 'hard' ? playableHeight * 0.42 : playableHeight * 0.34;
+      let nextCenter = minCenter + Math.random() * (maxCenter - minCenter);
+      if (state.lastGapCenterY !== null) {
+        const clampedMin = Math.max(minCenter, state.lastGapCenterY - maxStep);
+        const clampedMax = Math.min(maxCenter, state.lastGapCenterY + maxStep);
+        nextCenter = clampedMin + Math.random() * (clampedMax - clampedMin);
+      }
+      state.lastGapCenterY = nextCenter;
+
+      const pipeWidth = Math.max(62, Math.min(78, state.width * 0.08));
+      state.pipes.push({
+        x: state.width + pipeWidth,
+        width: pipeWidth,
+        gapTop: nextCenter - gapHeight * 0.5,
+        gapBottom: nextCenter + gapHeight * 0.5,
+        scored: false,
+      });
+    }
+
+    function triggerFlapImpulse() {
+      if (state.phase !== 'PLAYING') return;
+      const cfg = DIFFICULTIES[state.difficulty];
+      state.bird.vy = cfg.flapImpulse;
+      sound.playWhoosh();
+    }
+
+    function updateSimulation(dt) {
+      const cfg = DIFFICULTIES[state.difficulty];
+      const playableHeight = state.height - state.groundHeight;
+
+      // Scroll background scenery in START and PLAYING phases
+      const worldSpeed = state.phase === 'PLAYING' ? cfg.speed : cfg.speed * 0.35;
+      if (state.phase !== 'GAMEOVER') {
+        state.scrollDistance += worldSpeed * dt;
+
+        // Update clouds
+        for (const cloud of state.clouds) {
+          cloud.x -= worldSpeed * cloud.speedFactor * dt;
+          if (cloud.x < -160) {
+            cloud.x = state.width + 120;
+            cloud.y = 65 + Math.random() * (playableHeight * 0.32);
+          }
+        }
+
+        // Update distant city silhouettes
+        for (const block of state.cityBlocks) {
+          block.x -= worldSpeed * 0.22 * dt;
+        }
+        if (state.cityBlocks.length > 0 && state.cityBlocks[0].x + state.cityBlocks[0].w < -60) {
+          const first = state.cityBlocks.shift();
+          const last = state.cityBlocks[state.cityBlocks.length - 1];
+          first.x = last.x + last.w + 10 + Math.random() * 18;
+          state.cityBlocks.push(first);
+        }
+      }
+
+      // Bird wing animation
+      state.bird.wingPhase += dt * (state.phase === 'PLAYING' ? 11 : 7);
+
+      if (state.phase === 'START') {
+        // Gentle idle hover preview synced with nose/pointer if active
+        const hoverNorm = state.webcamActive && state.noseDetected ? state.targetNormalizedY : 0.46;
+        const desiredY = hoverNorm * (playableHeight - 40) + 20 + Math.sin(performance.now() * 0.004) * 10;
+        state.bird.y += (desiredY - state.bird.y) * Math.min(1, dt * 8);
+        state.bird.rotation = Math.sin(performance.now() * 0.004) * 0.06;
+        return;
+      }
+
+      if (state.phase === 'GAMEOVER') {
+        return;
+      }
+
+      // PLAYING PHASE: Vertical Bird Control
+      const useDirectControl =
+        (state.webcamActive && state.noseDetected) || state.fallbackMode === 'FOLLOW';
+
+      if (useDirectControl) {
+        const controlNorm =
+          state.webcamActive && state.noseDetected
+            ? state.targetNormalizedY
+            : state.pointerNormalizedY;
+
+        const minBirdY = state.bird.radius + 12;
+        const maxBirdY = playableHeight - state.bird.radius - 4;
+        const desiredY = minBirdY + controlNorm * (maxBirdY - minBirdY);
+
+        const prevY = state.bird.y;
+        const blend = 1 - Math.exp(-cfg.lerpSmoothness * dt);
+        state.bird.y += (desiredY - state.bird.y) * blend;
+        state.bird.vy = (state.bird.y - prevY) / Math.max(dt, 0.001);
+      } else {
+        // Classic Tap/Spacebar flap physics fallback
+        state.bird.vy += cfg.flapGravity * dt;
+        state.bird.y += state.bird.vy * dt;
+
+        if (state.bird.y < state.bird.radius + 8) {
+          state.bird.y = state.bird.radius + 8;
+          state.bird.vy = 0;
+        }
+      }
+
+      // Smooth aerodynamic pitch tilt based on vertical velocity
+      const targetAngle = Math.max(-0.48, Math.min(0.62, state.bird.vy * 0.0011));
+      state.bird.rotation += (targetAngle - state.bird.rotation) * Math.min(1, dt * 14);
+
+      // Ground collision check
+      if (state.bird.y + state.bird.radius >= playableHeight) {
+        state.bird.y = playableHeight - state.bird.radius;
+        triggerGameOver();
+        return;
+      }
+
+      // Pipe spawning & movement
+      state.spawnTimer -= dt;
+      if (state.spawnTimer <= 0) {
+        spawnPipe();
+        state.spawnTimer = cfg.spawnInterval;
+      }
+
+      for (let i = state.pipes.length - 1; i >= 0; i--) {
+        const p = state.pipes[i];
+        p.x -= cfg.speed * dt;
+
+        // Score point when bird center passes pipe center
+        if (!p.scored && p.x + p.width * 0.5 < state.bird.x) {
+          p.scored = true;
+          state.score += 1;
+          ui.hudScore.textContent = state.score;
+          sound.playScore();
+        }
+
+        // Circle-vs-AABB collision with forgiving 3px inner hitbox margin
+        const hitRadius = state.bird.radius - 3;
+        const bx = state.bird.x;
+        const by = state.bird.y;
+
+        const withinPipeX = bx + hitRadius > p.x && bx - hitRadius < p.x + p.width;
+        if (withinPipeX) {
+          const hitsTop = by - hitRadius < p.gapTop;
+          const hitsBottom = by + hitRadius > p.gapBottom;
+          if (hitsTop || hitsBottom) {
+            triggerGameOver();
+            return;
+          }
+        }
+
+        // Remove offscreen pipes
+        if (p.x + p.width < -40) {
+          state.pipes.splice(i, 1);
+        }
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 8. MATTE LAYERED CANVAS RENDERER
+     * ============================================================================
+     */
+    function drawRoundedRect(context, x, y, w, h, r) {
+      const radius = Math.min(r, w * 0.5, h * 0.5);
+      context.beginPath();
+      context.moveTo(x + radius, y);
+      context.arcTo(x + w, y, x + w, y + h, radius);
+      context.arcTo(x + w, y + h, x, y + h, radius);
+      context.arcTo(x, y + h, x, y, radius);
+      context.arcTo(x, y, x + w, y, radius);
+      context.closePath();
+    }
+
+    function renderScene() {
+      const w = state.width;
+      const h = state.height;
+      const groundY = h - state.groundHeight;
+
+      // 1. Soft Cream-to-Sage Sky Gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, groundY);
+      skyGrad.addColorStop(0, PALETTE.skyTop);
+      skyGrad.addColorStop(1, PALETTE.skyBottom);
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, w, groundY);
+
+      // 2. Warm Matte Pastel Sun Disc
+      ctx.fillStyle = PALETTE.sunDisc;
+      ctx.beginPath();
+      ctx.arc(w * 0.76, groundY * 0.28, Math.min(w, h) * 0.11, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3. Minimalist Soft Clouds
+      ctx.fillStyle = PALETTE.cloudFill;
+      for (const c of state.clouds) {
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.scale(c.scale, c.scale);
+        ctx.beginPath();
+        ctx.arc(0, 0, 26, 0, Math.PI * 2);
+        ctx.arc(24, -6, 32, 0, Math.PI * 2);
+        ctx.arc(54, 0, 24, 0, Math.PI * 2);
+        ctx.arc(26, 8, 26, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 4. Distant Rolling Hills
+      ctx.fillStyle = PALETTE.farHill;
+      ctx.beginPath();
+      ctx.moveTo(0, groundY);
+      for (let x = 0; x <= w + 40; x += 40) {
+        const wave = Math.sin((x + state.scrollDistance * 0.12) * 0.0045) * 34;
+        ctx.lineTo(x, groundY - 95 - wave);
+      }
+      ctx.lineTo(w, groundY);
+      ctx.closePath();
+      ctx.fill();
+
+      // 5. Minimalist Architectural Silhouettes
+      ctx.fillStyle = PALETTE.citySilhouette;
+      for (const b of state.cityBlocks) {
+        const by = groundY - 36 - b.h;
+        drawRoundedRect(ctx, b.x, by, b.w, b.h + 36, 6);
+        ctx.fill();
+
+        if (b.hasRoofAccent) {
+          ctx.fillRect(b.x + b.w * 0.25, by - 8, b.w * 0.5, 8);
+        }
+      }
+
+      // 6. Foreground Soft Sage Hills
+      ctx.fillStyle = PALETTE.nearHill;
+      ctx.beginPath();
+      ctx.moveTo(0, groundY);
+      for (let x = 0; x <= w + 30; x += 30) {
+        const wave = Math.cos((x + state.scrollDistance * 0.35) * 0.007) * 20;
+        ctx.lineTo(x, groundY - 42 - wave);
+      }
+      ctx.lineTo(w, groundY);
+      ctx.closePath();
+      ctx.fill();
+
+      // 7. Pipe Obstacles (Matte Sage Columns with Rounded Caps)
+      for (const p of state.pipes) {
+        const capOverhang = 6;
+        const capHeight = 26;
+
+        // Top Pipe
+        if (p.gapTop > 0) {
+          ctx.fillStyle = PALETTE.pipeBody;
+          ctx.fillRect(p.x, 0, p.width, Math.max(0, p.gapTop - capHeight + 4));
+
+          // Left subtle highlight strip
+          ctx.fillStyle = PALETTE.pipeHighlight;
+          ctx.fillRect(p.x + 6, 0, 8, Math.max(0, p.gapTop - capHeight));
+
+          // Rounded Cap
+          ctx.fillStyle = PALETTE.pipeCap;
+          drawRoundedRect(
+            ctx,
+            p.x - capOverhang,
+            p.gapTop - capHeight,
+            p.width + capOverhang * 2,
+            capHeight,
+            10
+          );
+          ctx.fill();
+        }
+
+        // Bottom Pipe
+        const bottomPipeHeight = groundY - p.gapBottom;
+        if (bottomPipeHeight > 0) {
+          ctx.fillStyle = PALETTE.pipeBody;
+          ctx.fillRect(p.x, p.gapBottom + capHeight - 4, p.width, Math.max(0, bottomPipeHeight - capHeight + 4));
+
+          // Left subtle highlight strip
+          ctx.fillStyle = PALETTE.pipeHighlight;
+          ctx.fillRect(p.x + 6, p.gapBottom + capHeight, 8, Math.max(0, bottomPipeHeight - capHeight));
+
+          // Rounded Cap
+          ctx.fillStyle = PALETTE.pipeCap;
+          drawRoundedRect(
+            ctx,
+            p.x - capOverhang,
+            p.gapBottom,
+            p.width + capOverhang * 2,
+            capHeight,
+            10
+          );
+          ctx.fill();
+        }
+      }
+
+      // 8. Ground Strip (Warm Sand & Matte Sage Turf)
+      ctx.fillStyle = PALETTE.groundBody;
+      ctx.fillRect(0, groundY, w, state.groundHeight);
+
+      // Subtle diagonal ground pattern
+      ctx.fillStyle = PALETTE.groundStripe;
+      const stripeSpacing = 36;
+      const offset = state.scrollDistance % stripeSpacing;
+      for (let x = -offset - stripeSpacing; x < w + stripeSpacing; x += stripeSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(x, groundY + 14);
+        ctx.lineTo(x + 16, groundY + 14);
+        ctx.lineTo(x + 6, groundY + 30);
+        ctx.lineTo(x - 10, groundY + 30);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Turf top border
+      ctx.fillStyle = PALETTE.groundTop;
+      ctx.fillRect(0, groundY, w, 14);
+
+      // 9. Stylized Modern Bird Character
+      drawBird();
+    }
+
+    function drawBird() {
+      const b = state.bird;
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.rotation);
+
+      // Soft ground/air shadow
+      ctx.fillStyle = 'rgba(45, 55, 72, 0.08)';
+      ctx.beginPath();
+      ctx.ellipse(0, b.radius + 6, b.radius * 0.85, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Main rounded body
+      ctx.fillStyle = PALETTE.birdBody;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, b.radius + 3, b.radius, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Cream belly patch
+      ctx.fillStyle = PALETTE.birdBelly;
+      ctx.beginPath();
+      ctx.ellipse(3, 5, b.radius * 0.72, b.radius * 0.58, -0.15, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ochre Beak
+      ctx.fillStyle = PALETTE.birdBeak;
+      ctx.beginPath();
+      ctx.moveTo(b.radius - 1, -4);
+      ctx.quadraticCurveTo(b.radius + 14, -1, b.radius + 13, 3);
+      ctx.quadraticCurveTo(b.radius + 12, 7, b.radius - 1, 6);
+      ctx.closePath();
+      ctx.fill();
+
+      // Expressive Eye
+      ctx.fillStyle = '#FAF8F5';
+      ctx.beginPath();
+      ctx.arc(8, -5, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = PALETTE.birdEye;
+      ctx.beginPath();
+      ctx.arc(9.5, -5, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Eye catchlight
+      ctx.fillStyle = '#FAF8F5';
+      ctx.beginPath();
+      ctx.arc(10.4, -6, 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Animated Wing
+      const wingFlapY = Math.sin(b.wingPhase) * 4.5;
+      ctx.fillStyle = PALETTE.birdWing;
+      ctx.beginPath();
+      ctx.ellipse(-4, 1 + wingFlapY * 0.4, 10, 6.5 + wingFlapY * 0.25, -0.25, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    /**
+     * ============================================================================
+     * 9. MAIN ANIMATION LOOP
+     * ============================================================================
+     */
+    let lastTimestamp = performance.now();
+    function gameLoop(now) {
+      const dt = Math.min(0.05, (now - lastTimestamp) / 1000);
+      lastTimestamp = now;
+
+      processWebcamFrame();
+      updateSimulation(dt);
+      renderScene();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    /**
+     * ============================================================================
+     * 10. EVENT LISTENERS (CONTROLS, DIFFICULTY, BUTTONS)
+     * ============================================================================
+     */
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      initParallaxEnvironment();
+    });
+
+    // Pointer / Mouse / Touch Y-tracking & Flap support
+    function handlePointerMove(clientY) {
+      const playableHeight = Math.max(1, state.height - state.groundHeight);
+      state.pointerNormalizedY = Math.max(0.02, Math.min(0.98, clientY / playableHeight));
+    }
+
+    canvas.addEventListener('mousemove', (e) => {
+      handlePointerMove(e.clientY);
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      handlePointerMove(e.clientY);
+      if (state.fallbackMode === 'FLAP' && !(state.webcamActive && state.noseDetected)) {
+        triggerFlapImpulse();
+      }
+    });
+
+    canvas.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.touches.length > 0) {
+          handlePointerMove(e.touches[0].clientY);
+          if (state.fallbackMode === 'FLAP' && !(state.webcamActive && state.noseDetected)) {
+            triggerFlapImpulse();
+          }
+        }
+      },
+      { passive: true }
+    );
+
+    canvas.addEventListener(
+      'touchmove',
+      (e) => {
+        if (e.touches.length > 0) {
+          handlePointerMove(e.touches[0].clientY);
+        }
+      },
+      { passive: true }
+    );
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp') {
+        if (state.phase === 'PLAYING' && state.fallbackMode === 'FLAP' && !(state.webcamActive && state.noseDetected)) {
+          e.preventDefault();
+          triggerFlapImpulse();
+        }
+      } else if (e.code === 'KeyC') {
+        calibrateCenter();
+      }
+    });
+
+    // Difficulty buttons (both Start screen and Game Over modal)
+    ui.diffButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        updateDifficultyUI(btn.dataset.diff);
+      });
+    });
+
+    // Start, Play Again, Home buttons
+    document.getElementById('btnStartGame').addEventListener('click', startGame);
+    document.getElementById('btnPlayAgain').addEventListener('click', startGame);
+    document.getElementById('btnBackHome').addEventListener('click', () => {
+      state.phase = 'START';
+      ui.gameOverOverlay.classList.remove('overlay-visible');
+      ui.gameOverOverlay.classList.add('overlay-hidden');
+      ui.startOverlay.classList.remove('overlay-hidden');
+      ui.startOverlay.classList.add('overlay-visible');
+    });
+
+    // Recalibrate center baseline buttons
+    document.getElementById('btnRecalibrateHud').addEventListener('click', calibrateCenter);
+    document.getElementById('btnRecalibratePip').addEventListener('click', calibrateCenter);
+
+    // Retry webcam button
+    ui.btnRetryCam.addEventListener('click', () => {
+      if (!state.faceLandmarker) {
+        initFaceTracker();
+      } else {
+        startWebcam();
+      }
+    });
+
+    // Fallback style toggle (Direct Y-follow vs Classic Tap/Space Flap)
+    ui.btnToggleFallbackStyle.addEventListener('click', () => {
+      state.fallbackMode = state.fallbackMode === 'FOLLOW' ? 'FLAP' : 'FOLLOW';
+      ui.btnToggleFallbackStyle.textContent =
+        state.fallbackMode === 'FOLLOW' ? 'Direct Follow' : 'Tap / Space Flap';
+      updateControlStatusUI();
+    });
+
+    // Sound Mute Toggle
+    document.getElementById('btnToggleSound').addEventListener('click', () => {
+      const muted = sound.toggleMute();
+      document.getElementById('iconSoundOn').classList.toggle('hidden', muted);
+      document.getElementById('iconSoundOff').classList.toggle('hidden', !muted);
+    });
+
+    // PiP Camera Preview Toggle
+    document.getElementById('btnTogglePip').addEventListener('click', () => {
+      state.pipVisible = !state.pipVisible;
+      ui.pipContainer.classList.toggle('opacity-0', !state.pipVisible);
+      ui.pipContainer.classList.toggle('pointer-events-none', !state.pipVisible);
+      ui.pipContainer.classList.toggle('translate-y-4', !state.pipVisible);
+      document.getElementById('iconCamOn').classList.toggle('hidden', !state.pipVisible);
+      document.getElementById('iconCamOff').classList.toggle('hidden', state.pipVisible);
+    });
+
+    /**
+     * ============================================================================
+     * 11. INITIALIZATION ON WINDOW LOAD
+     * ============================================================================
+     */
+    window.addEventListener('load', () => {
+      resizeCanvas();
+      initParallaxEnvironment();
+      updateDifficultyUI('medium');
+      updateControlStatusUI();
+      initFaceTracker();
+      requestAnimationFrame(gameLoop);
+    });
+  </script>
+</body>
+</html>
